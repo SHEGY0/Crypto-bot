@@ -5,6 +5,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import aiosqlite
 from config import ADMIN_IDS, DATABASE_PATH
+from database import get_user
 
 router = Router()
 
@@ -14,27 +15,31 @@ class ReviewStates(StatesGroup):
     waiting_text = State()
 
 
-# ─── DB ───────────────────────────────────────────────
 async def init_reviews_db():
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS reviews (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
+                agent_number TEXT DEFAULT '0000',
                 rating INTEGER NOT NULL,
                 text TEXT NOT NULL,
                 status TEXT DEFAULT 'pending',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        try:
+            await db.execute("ALTER TABLE reviews ADD COLUMN agent_number TEXT DEFAULT '0000'")
+        except Exception:
+            pass
         await db.commit()
 
 
-async def save_review(user_id: int, rating: int, text: str):
+async def save_review(user_id: int, agent_number: str, rating: int, text: str):
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
-            "INSERT INTO reviews (user_id, rating, text) VALUES (?, ?, ?)",
-            (user_id, rating, text)
+            "INSERT INTO reviews (user_id, agent_number, rating, text) VALUES (?, ?, ?, ?)",
+            (user_id, agent_number, rating, text)
         )
         await db.commit()
         async with db.execute("SELECT last_insert_rowid()") as cur:
@@ -74,7 +79,6 @@ async def get_review_stats():
         return {"count": row[0] or 0, "avg": row[1] or 0}
 
 
-# ─── Keyboards ────────────────────────────────────────
 def rating_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -97,7 +101,6 @@ def moderation_keyboard(review_id: int):
     ])
 
 
-# ─── Handlers ─────────────────────────────────────────
 @router.message(F.text == "⭐️ Отзывы")
 async def show_reviews(message: Message):
     await init_reviews_db()
@@ -119,7 +122,8 @@ async def show_reviews(message: Message):
         for r in reviews:
             stars_str = "⭐️" * r["rating"]
             date = r["created_at"][:10]
-            text += f"{stars_str} — {r['text']}\n<i>{date}</i>\n\n"
+            agent = r.get("agent_number", "0000")
+            text += f"{stars_str} <b>🥷 Агент #{agent}</b>\n{r['text']}\n<i>{date}</i>\n\n"
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✍️ Оставить отзыв", callback_data="write_review")]
@@ -131,8 +135,7 @@ async def show_reviews(message: Message):
 async def start_review(callback: CallbackQuery, state: FSMContext):
     await state.set_state(ReviewStates.waiting_rating)
     await callback.message.answer(
-        "✍️ <b>Оставить отзыв</b>\n\n"
-        "Сначала поставьте оценку нашему сервису:",
+        "✍️ <b>Оставить отзыв</b>\n\nСначала поставьте оценку нашему сервису:",
         parse_mode="HTML",
         reply_markup=rating_keyboard()
     )
@@ -177,16 +180,19 @@ async def process_review_text(message: Message, state: FSMContext):
     rating = data["rating"]
     await state.clear()
 
-    review_id = await save_review(message.from_user.id, rating, text)
+    # Получаем номер агента
+    user = await get_user(message.from_user.id)
+    agent_number = user.get("agent_number", "0000") if user else "0000"
+
+    review_id = await save_review(message.from_user.id, agent_number, rating, text)
     stars = "⭐️" * rating
 
-    # Отправляем на модерацию админу
     try:
         for admin_id in ADMIN_IDS:
             await message.bot.send_message(
                 admin_id,
                 f"📝 <b>Новый отзыв на модерацию!</b>\n\n"
-                f"👤 ID: {message.from_user.id}\n"
+                f"🥷 Агент #{agent_number}\n"
                 f"Оценка: {stars} ({rating}/5)\n"
                 f"Текст: {text}\n\n"
                 f"Опубликовать?",
@@ -197,14 +203,13 @@ async def process_review_text(message: Message, state: FSMContext):
         pass
 
     await message.answer(
-        f"✅ <b>Спасибо за отзыв!</b>\n\n"
+        f"✅ <b>Спасибо за отзыв, 🥷 Агент #{agent_number}!</b>\n\n"
         f"{stars}\n{text}\n\n"
         f"<i>Отзыв отправлен на модерацию и будет опубликован в ближайшее время.</i>",
         parse_mode="HTML"
     )
 
 
-# ─── Admin moderation callbacks ───────────────────────
 @router.callback_query(F.data.startswith("approve_review:"))
 async def approve_review_cb(callback: CallbackQuery):
     review_id = int(callback.data.split(":")[1])
