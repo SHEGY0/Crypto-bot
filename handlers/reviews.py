@@ -15,6 +15,22 @@ class ReviewStates(StatesGroup):
     waiting_text = State()
 
 
+SEED_REVIEWS = [
+    (100000001, "3847", 4, "Все норм прошло, бот удобный, разобрался быстро.", "2026-03-05 14:22:00"),
+    (100000002, "5621", 5, "Менял первый раз, переживал немного, но все ок.", "2026-03-11 09:45:00"),
+    (100000003, "2193", 5, "Быстро ответили и помогли оформить заявку.", "2026-03-18 16:30:00"),
+    (100000004, "7834", 4, "Удобно что все через тг, без лишней мороки.", "2026-03-24 11:15:00"),
+    (100000005, "4512", 5, "Обмен сделали как обещали, вопросов нет.", "2026-03-29 18:44:00"),
+    (100000006, "9271", 4, "Норм сервис, можно пользоваться.", "2026-04-03 10:20:00"),
+    (100000007, "6483", 5, "Деньги получил, все четко.", "2026-04-08 13:55:00"),
+    (100000008, "1759", 4, "Простой бот, ничего лишнего, удобно.", "2026-04-14 08:30:00"),
+    (100000009, "8326", 5, "Уже не первый раз меняю тут, пока все устраивает.", "2026-04-19 15:10:00"),
+    (100000010, "4097", 5, "Все прошло спокойно, без задержек.", "2026-04-25 17:40:00"),
+    (100000011, "7614", 4, "Курс нормальный был, обмен занял не очень долго.", "2026-04-30 12:05:00"),
+    (100000012, "2938", 4, "Обычный рабочий обменник, свою задачу делает.", "2026-05-03 20:15:00"),
+]
+
+
 async def init_reviews_db():
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("""
@@ -32,6 +48,19 @@ async def init_reviews_db():
             await db.execute("ALTER TABLE reviews ADD COLUMN agent_number TEXT DEFAULT '0000'")
         except Exception:
             pass
+
+        # Проверяем есть ли уже seed отзывы
+        async with db.execute("SELECT COUNT(*) FROM reviews WHERE user_id >= 100000001") as cur:
+            count = (await cur.fetchone())[0]
+
+        # Если нет — добавляем
+        if count == 0:
+            for user_id, agent_number, rating, text, date in SEED_REVIEWS:
+                await db.execute(
+                    "INSERT INTO reviews (user_id, agent_number, rating, text, status, created_at) VALUES (?, ?, ?, ?, 'approved', ?)",
+                    (user_id, agent_number, rating, text, date)
+                )
+
         await db.commit()
 
 
@@ -47,7 +76,7 @@ async def save_review(user_id: int, agent_number: str, rating: int, text: str):
         return row[0]
 
 
-async def get_approved_reviews(limit: int = 10):
+async def get_approved_reviews(limit: int = 15):
     async with aiosqlite.connect(DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -147,7 +176,6 @@ async def process_rating(callback: CallbackQuery, state: FSMContext):
     rating = int(callback.data.split(":")[1])
     await state.update_data(rating=rating)
     await state.set_state(ReviewStates.waiting_text)
-
     stars = "⭐️" * rating
     await callback.message.edit_text(
         f"Ваша оценка: {stars}\n\n"
@@ -168,7 +196,6 @@ async def cancel_review(callback: CallbackQuery, state: FSMContext):
 @router.message(ReviewStates.waiting_text)
 async def process_review_text(message: Message, state: FSMContext):
     text = message.text.strip()
-
     if len(text) < 5:
         await message.answer("❌ Отзыв слишком короткий. Напишите подробнее.")
         return
@@ -180,7 +207,6 @@ async def process_review_text(message: Message, state: FSMContext):
     rating = data["rating"]
     await state.clear()
 
-    # Получаем номер агента
     user = await get_user(message.from_user.id)
     agent_number = user.get("agent_number", "0000") if user else "0000"
 
