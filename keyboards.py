@@ -6,7 +6,8 @@ def main_menu_keyboard():
         keyboard=[
             [KeyboardButton(text="💱 Обменять"), KeyboardButton(text="📊 Курсы валют")],
             [KeyboardButton(text="📋 История"), KeyboardButton(text="👥 Рефералы")],
-            [KeyboardButton(text="💬 Поддержка"), KeyboardButton(text="👤 Профиль")],
+            [KeyboardButton(text="⭐️ Отзывы"), KeyboardButton(text="💬 Поддержка")],
+            [KeyboardButton(text="👤 Профиль")],
         ],
         resize_keyboard=True,
         one_time_keyboard=False
@@ -14,7 +15,6 @@ def main_menu_keyboard():
 
 
 def crypto_select_keyboard(action: str):
-    """Select cryptocurrency keyboard"""
     from config import SUPPORTED_CRYPTO
     buttons = []
     row = []
@@ -40,7 +40,6 @@ def fiat_select_keyboard(from_currency: str):
             row = []
     if row:
         buttons.append(row)
-    # Add crypto-to-crypto option
     buttons.append([InlineKeyboardButton(text="🔄 Крипто → Крипто", callback_data=f"crypto_to:{from_currency}")])
     buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)

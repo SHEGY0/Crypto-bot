@@ -1,7 +1,8 @@
 from aiogram import Router, F
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from database import get_or_create_user, get_user
 from keyboards import main_menu_keyboard
@@ -9,11 +10,17 @@ from keyboards import main_menu_keyboard
 router = Router()
 
 
+def welcome_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💱 Начать обмен", callback_data="go_exchange")],
+        [InlineKeyboardButton(text="⭐️ Отзывы клиентов", callback_data="go_reviews")],
+    ])
+
+
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
 
-    # Check for referral code
     args = message.text.split()
     ref_code = args[1] if len(args) > 1 else None
 
@@ -24,15 +31,60 @@ async def cmd_start(message: Message, state: FSMContext):
         referred_by_code=ref_code
     )
 
-    welcome_text = (
-        f"👋 Добро пожаловать в <b>CryptoSwap</b>, {message.from_user.first_name}!\n\n"
-        f"🔐 Быстрый и безопасный обмен криптовалют\n"
-        f"💸 Комиссия всего <b>1.5%</b>\n"
-        f"⚡️ Обработка заявок за 5-30 минут\n\n"
-        f"Выберите действие в меню ниже 👇"
-    )
+    is_new = user.get("total_exchanged_usd", 0) == 0
 
-    await message.answer(welcome_text, parse_mode="HTML", reply_markup=main_menu_keyboard())
+    if is_new:
+        welcome_text = (
+            f"👋 Добро пожаловать, <b>{message.from_user.first_name}!</b>\n\n"
+            f"💎 <b>TetherSell</b> — быстрый и надёжный крипто обменник\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"⚡️ <b>Почему выбирают нас:</b>\n\n"
+            f"🔒 Полная анонимность — никаких KYC\n"
+            f"💸 Комиссия всего <b>1.5%</b> — одна из лучших на рынке\n"
+            f"⏱ Выплата за <b>5-30 минут</b> после подтверждения\n"
+            f"🌍 Работаем <b>24/7</b> без выходных\n"
+            f"🛡 Более <b>500+ успешных обменов</b>\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"💱 <b>Что мы обмениваем:</b>\n"
+            f"USDT · BTC · ETH · BNB · SOL · TON\n"
+            f"→ Рубли (СБП), USD, EUR и другие\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"👇 Выберите действие:"
+        )
+        await message.answer(
+            welcome_text,
+            parse_mode="HTML",
+            reply_markup=main_menu_keyboard()
+        )
+        await message.answer(
+            "🚀 Готовы начать? Нажмите кнопку:",
+            reply_markup=welcome_keyboard()
+        )
+    else:
+        await message.answer(
+            f"👋 С возвращением, <b>{message.from_user.first_name}!</b>\n\n"
+            f"Выберите действие в меню 👇",
+            parse_mode="HTML",
+            reply_markup=main_menu_keyboard()
+        )
+
+
+@router.callback_query(F.data == "go_exchange")
+async def go_exchange(callback: CallbackQuery):
+    await callback.message.answer(
+        "💱 Нажмите кнопку <b>«💱 Обменять»</b> в меню ниже 👇",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "go_reviews")
+async def go_reviews(callback: CallbackQuery):
+    await callback.message.answer(
+        "⭐️ Нажмите кнопку <b>«⭐️ Отзывы»</b> в меню ниже 👇",
+        parse_mode="HTML"
+    )
+    await callback.answer()
 
 
 @router.message(F.text == "👤 Профиль")
