@@ -8,7 +8,7 @@ import os
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 
 # ID администраторов (через запятую)
-ADMIN_IDS = [123456789]  # Замените на свои Telegram ID
+ADMIN_IDS = [6477447974]  # Замените на свои Telegram ID
 
 # Комиссия обменника (в процентах)
 EXCHANGE_FEE_PERCENT = 1.5
