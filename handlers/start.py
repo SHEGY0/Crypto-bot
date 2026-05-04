@@ -31,11 +31,13 @@ async def cmd_start(message: Message, state: FSMContext):
         referred_by_code=ref_code
     )
 
+    agent_number = user.get("agent_number", "0000")
+    agent_tag = f"🥷 Агент #{agent_number}"
     is_new = user.get("total_exchanged_usd", 0) == 0
 
     if is_new:
         welcome_text = (
-            f"👋 Добро пожаловать, <b>{message.from_user.first_name}!</b>\n\n"
+            f"👋 Добро пожаловать, <b>{agent_tag}</b>!\n\n"
             f"💎 <b>TetherSell</b> — быстрый и надёжный крипто обменник\n\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"⚡️ <b>Почему выбирают нас:</b>\n\n"
@@ -51,18 +53,11 @@ async def cmd_start(message: Message, state: FSMContext):
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"👇 Выберите действие:"
         )
-        await message.answer(
-            welcome_text,
-            parse_mode="HTML",
-            reply_markup=main_menu_keyboard()
-        )
-        await message.answer(
-            "🚀 Готовы начать? Нажмите кнопку:",
-            reply_markup=welcome_keyboard()
-        )
+        await message.answer(welcome_text, parse_mode="HTML", reply_markup=main_menu_keyboard())
+        await message.answer("🚀 Готовы начать? Нажмите кнопку:", reply_markup=welcome_keyboard())
     else:
         await message.answer(
-            f"👋 С возвращением, <b>{message.from_user.first_name}!</b>\n\n"
+            f"👋 С возвращением, <b>{agent_tag}</b>!\n\n"
             f"Выберите действие в меню 👇",
             parse_mode="HTML",
             reply_markup=main_menu_keyboard()
@@ -94,10 +89,11 @@ async def show_profile(message: Message):
         await message.answer("Пользователь не найден. Напишите /start")
         return
 
+    agent_number = user.get("agent_number", "0000")
+
     text = (
-        f"👤 <b>Ваш профиль</b>\n\n"
+        f"🥷 <b>Агент #{agent_number}</b>\n\n"
         f"🆔 ID: <code>{message.from_user.id}</code>\n"
-        f"👤 Имя: {user['full_name']}\n"
         f"💰 Всего обменяно: <b>${user['total_exchanged_usd']:.2f}</b>\n"
         f"🎁 Реферальный бонус: <b>${user['bonus_balance']:.2f}</b>\n"
         f"🔗 Реф. код: <code>{user['referral_code']}</code>\n"

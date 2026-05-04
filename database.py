@@ -11,6 +11,7 @@ async def init_db():
                 telegram_id INTEGER UNIQUE NOT NULL,
                 username TEXT,
                 full_name TEXT,
+                agent_number TEXT,
                 referral_code TEXT UNIQUE,
                 referred_by INTEGER,
                 total_exchanged_usd REAL DEFAULT 0,
@@ -18,6 +19,11 @@ async def init_db():
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Добавляем колонку если её нет (для существующих БД)
+        try:
+            await db.execute("ALTER TABLE users ADD COLUMN agent_number TEXT")
+        except Exception:
+            pass
         await db.execute("""
             CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,6 +53,14 @@ async def init_db():
         await db.commit()
 
 
+def generate_agent_number(telegram_id: int) -> str:
+    """Генерирует уникальный номер агента из Telegram ID"""
+    import hashlib
+    hash_val = int(hashlib.md5(str(telegram_id).encode()).hexdigest(), 16)
+    number = (hash_val % 9000) + 1000  # всегда 4 цифры: 1000-9999
+    return f"{number:04d}"
+
+
 async def get_or_create_user(telegram_id: int, username: str, full_name: str, referred_by_code: str = None):
     async with aiosqlite.connect(DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -54,11 +68,21 @@ async def get_or_create_user(telegram_id: int, username: str, full_name: str, re
             user = await cursor.fetchone()
 
         if user:
-            return dict(user)
+            # Обновляем agent_number если его нет
+            user_dict = dict(user)
+            if not user_dict.get("agent_number"):
+                agent_number = generate_agent_number(telegram_id)
+                await db.execute(
+                    "UPDATE users SET agent_number = ? WHERE telegram_id = ?",
+                    (agent_number, telegram_id)
+                )
+                await db.commit()
+                user_dict["agent_number"] = agent_number
+            return user_dict
 
-        # Generate referral code
         import hashlib
         ref_code = hashlib.md5(str(telegram_id).encode()).hexdigest()[:8].upper()
+        agent_number = generate_agent_number(telegram_id)
 
         referred_by_id = None
         if referred_by_code:
@@ -68,8 +92,8 @@ async def get_or_create_user(telegram_id: int, username: str, full_name: str, re
                     referred_by_id = referrer["id"]
 
         await db.execute(
-            "INSERT INTO users (telegram_id, username, full_name, referral_code, referred_by) VALUES (?, ?, ?, ?, ?)",
-            (telegram_id, username, full_name, ref_code, referred_by_id)
+            "INSERT INTO users (telegram_id, username, full_name, agent_number, referral_code, referred_by) VALUES (?, ?, ?, ?, ?, ?)",
+            (telegram_id, username, full_name, agent_number, ref_code, referred_by_id)
         )
         await db.commit()
 
@@ -91,7 +115,7 @@ async def create_transaction(user_id: int, from_currency: str, to_currency: str,
                               fee_usd: float, wallet_address: str):
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
-            """INSERT INTO transactions 
+            """INSERT INTO transactions
                (user_id, from_currency, to_currency, from_amount, to_amount, rate, fee_usd, wallet_address)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (user_id, from_currency, to_currency, from_amount, to_amount, rate, fee_usd, wallet_address)
